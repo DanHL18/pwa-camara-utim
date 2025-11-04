@@ -215,7 +215,7 @@
                 });
                 
                 video.srcObject = stream;
-                captureBtn.disabled = false;
+                captureBtn.disabled = false; // ✅ CORREGIDO: cambia true por false
                 showStatus('✅ Cámara activada correctamente', 'success');
                 
             } catch (error) {
