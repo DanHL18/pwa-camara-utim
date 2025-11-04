@@ -131,6 +131,12 @@
             border: 2px solid #e74c3c;
         }
         
+        .status-warning {
+            background: #fef9e7;
+            color: #f39c12;
+            border: 2px solid #f1c40f;
+        }
+        
         .instructions {
             background: #fff3cd;
             border: 2px solid #ffeaa7;
@@ -141,6 +147,19 @@
         
         .instructions h3 {
             color: #856404;
+            margin-bottom: 10px;
+        }
+        
+        .troubleshooting {
+            background: #e8f4fd;
+            border: 2px solid #3498db;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .troubleshooting h3 {
+            color: #2980b9;
             margin-bottom: 10px;
         }
         
@@ -165,6 +184,13 @@
             <p>3. Haz clic en "Capturar Foto" para tomar una imagen</p>
         </div>
         
+        <div class="troubleshooting">
+            <h3>🔧 Si hay problemas:</h3>
+            <p>• Cierra otras apps que usen la cámara</p>
+            <p>• Reinicia la aplicación</p>
+            <p>• Verifica permisos de cámara en ajustes</p>
+        </div>
+        
         <div class="camera-section">
             <button id="start-camera" class="btn">📸 Activar Cámara</button>
             
@@ -180,10 +206,12 @@
             </div>
         </div>
         
-        <div id="status"></div>
+        <div id="status" class="status status-warning">
+            ⚠️ Presiona "Activar Cámara" para comenzar
+        </div>
         
         <footer>
-            <p>Desarrollado por [Tu Nombre] - UTIM 2024</p>
+            <p>Desarrollado por DaniL18 - UTIM 2024</p>
             <p>Tecnologías: HTML5 MediaDevices API - PWA - Bubblewrap</p>
         </footer>
     </div>
@@ -197,60 +225,123 @@
         
         let stream = null;
         
-        function showStatus(message, type) {
+        function showStatus(message, type = 'warning') {
             statusDiv.innerHTML = `<div class="status status-${type}">${message}</div>`;
         }
         
         async function startCamera() {
             try {
-                showStatus('🔄 Solicitando acceso a la cámara...', 'success');
+                showStatus('🔄 Solicitando acceso a la cámara...', 'warning');
                 
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                // Primero detener cualquier stream anterior
+                if (stream) {
+                    stopCamera();
+                    // Pequeña pausa para liberar la cámara
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                
+                // Configuración más flexible para evitar errores
+                const constraints = {
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1280, max: 1920 },
+                        height: { ideal: 720, max: 1080 }
                     }, 
                     audio: false 
-                });
+                };
+                
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
                 
                 video.srcObject = stream;
-                captureBtn.disabled = false; // ✅ CORREGIDO: cambia true por false
+                captureBtn.disabled = false;
                 showStatus('✅ Cámara activada correctamente', 'success');
                 
             } catch (error) {
-                console.error('Error:', error);
-                showStatus(`❌ Error: ${error.message}`, 'error');
+                console.error('Error detallado:', error);
+                
+                let errorMessage = 'Error desconocido';
+                
+                if (error.name === 'NotAllowedError') {
+                    errorMessage = '❌ Permiso de cámara denegado. Por favor permite el acceso a la cámara.';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = '❌ No se encontró cámara en el dispositivo.';
+                } else if (error.name === 'NotReadableError' || error.message.includes('Device in use')) {
+                    errorMessage = '❌ La cámara está en uso por otra aplicación. Cierra otras apps de cámara y reintenta.';
+                } else if (error.name === 'OverconstrainedError') {
+                    errorMessage = '❌ No se pueden cumplir los requisitos de la cámara. Intentando con configuración básica...';
+                    // Reintentar con configuración básica
+                    setTimeout(retryWithBasicConstraints, 1000);
+                    return;
+                } else {
+                    errorMessage = `❌ Error: ${error.message}`;
+                }
+                
+                showStatus(errorMessage, 'error');
+                captureBtn.disabled = true;
+            }
+        }
+        
+        // Función para reintentar con configuración básica
+        async function retryWithBasicConstraints() {
+            try {
+                showStatus('🔄 Reintentando con configuración básica...', 'warning');
+                
+                const basicConstraints = {
+                    video: true, // Configuración más básica
+                    audio: false 
+                };
+                
+                stream = await navigator.mediaDevices.getUserMedia(basicConstraints);
+                
+                video.srcObject = stream;
+                captureBtn.disabled = false;
+                showStatus('✅ Cámara activada con configuración básica', 'success');
+                
+            } catch (error) {
+                showStatus('❌ Error incluso con configuración básica. Reinicia la app.', 'error');
             }
         }
         
         function capturePhoto() {
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            const dataUrl = canvas.toDataURL('image/png');
-            photo.src = dataUrl;
-            photo.style.display = 'block';
-            
-            showStatus('✅ Foto capturada exitosamente', 'success');
+            try {
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const dataUrl = canvas.toDataURL('image/png');
+                photo.src = dataUrl;
+                photo.style.display = 'block';
+                
+                showStatus('✅ Foto capturada exitosamente', 'success');
+                
+            } catch (error) {
+                showStatus('❌ Error al capturar foto', 'error');
+            }
         }
         
         function stopCamera() {
             if (stream) {
-                stream.getTracks().forEach(track => track.stop());
+                stream.getTracks().forEach(track => {
+                    track.stop();
+                });
+                stream = null;
             }
+            video.srcObject = null;
+            captureBtn.disabled = true;
         }
         
         startCameraBtn.addEventListener('click', startCamera);
         captureBtn.addEventListener('click', capturePhoto);
-        window.addEventListener('beforeunload', stopCamera);
         
-        // Service Worker Registration para PWA
+        // Mejor manejo de limpieza
+        window.addEventListener('beforeunload', stopCamera);
+        window.addEventListener('pagehide', stopCamera);
+        
+        // Service Worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js')
                 .then(() => console.log('Service Worker registrado'))
