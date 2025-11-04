@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Cámara - UTIM</title>
+    <meta name="theme-color" content="#3498db">
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="manifest" href="manifest.json">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.2em;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        
+        .university {
+            text-align: center;
+            color: #e74c3c;
+            font-weight: bold;
+            margin-bottom: 30px;
+            font-size: 1em;
+        }
+        
+        .camera-section {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .btn {
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+        }
+        
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .btn-capture {
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+        }
+        
+        .btn-capture:hover {
+            box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4);
+        }
+        
+        #video {
+            width: 100%;
+            max-width: 500px;
+            border: 3px solid #3498db;
+            border-radius: 10px;
+            margin: 20px 0;
+            background: #000;
+        }
+        
+        #photo {
+            width: 100%;
+            max-width: 500px;
+            border: 3px solid #2ecc71;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .status-success {
+            background: #d5f4e6;
+            color: #27ae60;
+            border: 2px solid #2ecc71;
+        }
+        
+        .status-error {
+            background: #fadbd8;
+            color: #c0392b;
+            border: 2px solid #e74c3c;
+        }
+        
+        .instructions {
+            background: #fff3cd;
+            border: 2px solid #ffeaa7;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .instructions h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📷 App Cámara UTIM</h1>
+        <div class="subtitle">Desarrollo Móvil Integral - MediaDevices API</div>
+        <div class="university">Universidad Tecnológica de Matamoros</div>
+        
+        <div class="instructions">
+            <h3>Instrucciones:</h3>
+            <p>1. Haz clic en "Activar Cámara"</p>
+            <p>2. Permite el acceso a la cámara cuando el navegador lo solicite</p>
+            <p>3. Haz clic en "Capturar Foto" para tomar una imagen</p>
+        </div>
+        
+        <div class="camera-section">
+            <button id="start-camera" class="btn">📸 Activar Cámara</button>
+            
+            <div id="camera-container">
+                <video id="video" autoplay playsinline></video>
+                <div>
+                    <button id="capture-btn" class="btn btn-capture" disabled>📷 Capturar Foto</button>
+                </div>
+            </div>
+            
+            <div id="photo-container">
+                <img id="photo" alt="Foto capturada">
+            </div>
+        </div>
+        
+        <div id="status"></div>
+        
+        <footer>
+            <p>Desarrollado por [Tu Nombre] - UTIM 2024</p>
+            <p>Tecnologías: HTML5 MediaDevices API - PWA - Bubblewrap</p>
+        </footer>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const photo = document.getElementById('photo');
+        const startCameraBtn = document.getElementById('start-camera');
+        const captureBtn = document.getElementById('capture-btn');
+        const statusDiv = document.getElementById('status');
+        
+        let stream = null;
+        
+        function showStatus(message, type) {
+            statusDiv.innerHTML = `<div class="status status-${type}">${message}</div>`;
+        }
+        
+        async function startCamera() {
+            try {
+                showStatus('🔄 Solicitando acceso a la cámara...', 'success');
+                
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }, 
+                    audio: false 
+                });
+                
+                video.srcObject = stream;
+                captureBtn.disabled = false;
+                showStatus('✅ Cámara activada correctamente', 'success');
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function capturePhoto() {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const dataUrl = canvas.toDataURL('image/png');
+            photo.src = dataUrl;
+            photo.style.display = 'block';
+            
+            showStatus('✅ Foto capturada exitosamente', 'success');
+        }
+        
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        }
+        
+        startCameraBtn.addEventListener('click', startCamera);
+        captureBtn.addEventListener('click', capturePhoto);
+        window.addEventListener('beforeunload', stopCamera);
+        
+        // Service Worker Registration para PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(() => console.log('Service Worker registrado'))
+                .catch(err => console.log('Error SW:', err));
+        }
+    </script>
+</body>
+</html>
