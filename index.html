@@ -100,6 +100,7 @@
             border-radius: 10px;
             margin: 20px 0;
             background: #000;
+            transform: scaleX(-1); /* Espejo para que sea más natural */
         }
         
         #photo {
@@ -137,6 +138,12 @@
             border: 2px solid #f1c40f;
         }
         
+        .status-info {
+            background: #d6eaf8;
+            color: #3498db;
+            border: 2px solid #3498db;
+        }
+        
         .instructions {
             background: #fff3cd;
             border: 2px solid #ffeaa7;
@@ -150,17 +157,14 @@
             margin-bottom: 10px;
         }
         
-        .troubleshooting {
-            background: #e8f4fd;
-            border: 2px solid #3498db;
+        .debug-info {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
             border-radius: 10px;
-            padding: 20px;
+            padding: 15px;
             margin: 20px 0;
-        }
-        
-        .troubleshooting h3 {
-            color: #2980b9;
-            margin-bottom: 10px;
+            font-family: monospace;
+            font-size: 12px;
         }
         
         footer {
@@ -180,22 +184,17 @@
         <div class="instructions">
             <h3>Instrucciones:</h3>
             <p>1. Haz clic en "Activar Cámara"</p>
-            <p>2. Permite el acceso a la cámara cuando el navegador lo solicite</p>
-            <p>3. Haz clic en "Capturar Foto" para tomar una imagen</p>
-        </div>
-        
-        <div class="troubleshooting">
-            <h3>🔧 Si hay problemas:</h3>
-            <p>• Cierra otras apps que usen la cámara</p>
-            <p>• Reinicia la aplicación</p>
-            <p>• Verifica permisos de cámara en ajustes</p>
+            <p>2. <strong>Espera el mensaje de permiso</strong> - puede tardar unos segundos</p>
+            <p>3. Permite el acceso a la cámara</p>
+            <p>4. Haz clic en "Capturar Foto"</p>
         </div>
         
         <div class="camera-section">
             <button id="start-camera" class="btn">📸 Activar Cámara</button>
+            <button id="retry-camera" class="btn" style="display: none;">🔄 Reintentar</button>
             
             <div id="camera-container">
-                <video id="video" autoplay playsinline></video>
+                <video id="video" autoplay playsinline muted></video>
                 <div>
                     <button id="capture-btn" class="btn btn-capture" disabled>📷 Capturar Foto</button>
                 </div>
@@ -206,8 +205,13 @@
             </div>
         </div>
         
-        <div id="status" class="status status-warning">
-            ⚠️ Presiona "Activar Cámara" para comenzar
+        <div id="status" class="status status-info">
+            👆 Presiona "Activar Cámara" para comenzar
+        </div>
+        
+        <div class="debug-info">
+            <strong>Info de depuración:</strong>
+            <div id="debug"></div>
         </div>
         
         <footer>
@@ -220,96 +224,168 @@
         const video = document.getElementById('video');
         const photo = document.getElementById('photo');
         const startCameraBtn = document.getElementById('start-camera');
+        const retryCameraBtn = document.getElementById('retry-camera');
         const captureBtn = document.getElementById('capture-btn');
         const statusDiv = document.getElementById('status');
+        const debugDiv = document.getElementById('debug');
         
         let stream = null;
+        let cameraTimeout = null;
         
-        function showStatus(message, type = 'warning') {
+        function debugLog(message) {
+            debugDiv.innerHTML += `<div>${new Date().toLocaleTimeString()}: ${message}</div>`;
+        }
+        
+        function showStatus(message, type = 'info') {
             statusDiv.innerHTML = `<div class="status status-${type}">${message}</div>`;
+        }
+        
+        function enableButtons() {
+            startCameraBtn.disabled = false;
+            retryCameraBtn.style.display = 'none';
+        }
+        
+        function disableButtons() {
+            startCameraBtn.disabled = true;
+            retryCameraBtn.style.display = 'inline-block';
         }
         
         async function startCamera() {
             try {
+                debugLog('Iniciando activación de cámara...');
                 showStatus('🔄 Solicitando acceso a la cámara...', 'warning');
+                disableButtons();
                 
-                // Primero detener cualquier stream anterior
+                // Limpiar timeout anterior
+                if (cameraTimeout) {
+                    clearTimeout(cameraTimeout);
+                }
+                
+                // Timeout de seguridad (10 segundos)
+                cameraTimeout = setTimeout(() => {
+                    debugLog('Timeout: La cámara tardó demasiado en responder');
+                    showStatus('⏰ Tiempo de espera agotado. Presiona "Reintentar"', 'error');
+                    enableButtons();
+                }, 10000);
+                
+                // Detener stream anterior si existe
                 if (stream) {
                     stopCamera();
-                    // Pequeña pausa para liberar la cámara
                     await new Promise(resolve => setTimeout(resolve, 500));
                 }
                 
-                // Configuración más flexible para evitar errores
+                // Configuración MUY básica para máxima compatibilidad
                 const constraints = {
                     video: {
-                        facingMode: { ideal: 'environment' },
-                        width: { ideal: 1280, max: 1920 },
-                        height: { ideal: 720, max: 1080 }
+                        facingMode: 'environment', // Cámara trasera
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
                     }, 
                     audio: false 
                 };
                 
+                debugLog('Solicitando getUserMedia...');
+                
+                // Solicitar acceso a la cámara
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
                 
+                // Limpiar timeout si tuvo éxito
+                clearTimeout(cameraTimeout);
+                
+                debugLog('Cámara accedida exitosamente');
+                
+                // Configurar el video
                 video.srcObject = stream;
-                captureBtn.disabled = false;
-                showStatus('✅ Cámara activada correctamente', 'success');
+                
+                // Esperar a que el video esté listo
+                video.onloadedmetadata = () => {
+                    debugLog('Video metadata cargada');
+                    video.play().then(() => {
+                        debugLog('Video reproduciéndose');
+                        captureBtn.disabled = false;
+                        showStatus('✅ Cámara activada correctamente', 'success');
+                        enableButtons();
+                    }).catch(error => {
+                        debugLog('Error al reproducir video: ' + error.message);
+                        showStatus('❌ Error al iniciar video', 'error');
+                        enableButtons();
+                    });
+                };
+                
+                video.onerror = (error) => {
+                    debugLog('Error en elemento video: ' + error);
+                    showStatus('❌ Error en el video', 'error');
+                    enableButtons();
+                };
                 
             } catch (error) {
-                console.error('Error detallado:', error);
+                // Limpiar timeout en caso de error
+                if (cameraTimeout) {
+                    clearTimeout(cameraTimeout);
+                }
+                
+                debugLog('Error en startCamera: ' + error.name + ' - ' + error.message);
                 
                 let errorMessage = 'Error desconocido';
                 
                 if (error.name === 'NotAllowedError') {
-                    errorMessage = '❌ Permiso de cámara denegado. Por favor permite el acceso a la cámara.';
+                    errorMessage = '❌ Permiso de cámara denegado. Por favor permite el acceso a la cámara en tu navegador.';
                 } else if (error.name === 'NotFoundError') {
                     errorMessage = '❌ No se encontró cámara en el dispositivo.';
                 } else if (error.name === 'NotReadableError' || error.message.includes('Device in use')) {
-                    errorMessage = '❌ La cámara está en uso por otra aplicación. Cierra otras apps de cámara y reintenta.';
+                    errorMessage = '❌ La cámara está en uso. Cierra otras apps de cámara y presiona "Reintentar".';
                 } else if (error.name === 'OverconstrainedError') {
-                    errorMessage = '❌ No se pueden cumplir los requisitos de la cámara. Intentando con configuración básica...';
-                    // Reintentar con configuración básica
-                    setTimeout(retryWithBasicConstraints, 1000);
+                    errorMessage = '❌ Configuración no compatible. Intentando alternativa...';
+                    // Reintentar sin restricciones
+                    setTimeout(retrySimpleCamera, 1000);
                     return;
                 } else {
                     errorMessage = `❌ Error: ${error.message}`;
                 }
                 
                 showStatus(errorMessage, 'error');
-                captureBtn.disabled = true;
+                enableButtons();
             }
         }
         
-        // Función para reintentar con configuración básica
-        async function retryWithBasicConstraints() {
+        // Función de reintento con configuración más simple
+        async function retrySimpleCamera() {
             try {
-                showStatus('🔄 Reintentando con configuración básica...', 'warning');
+                debugLog('Reintentando con configuración simple...');
+                showStatus('🔄 Intentando configuración alternativa...', 'warning');
                 
-                const basicConstraints = {
-                    video: true, // Configuración más básica
+                const simpleConstraints = {
+                    video: true, // Configuración más simple posible
                     audio: false 
                 };
                 
-                stream = await navigator.mediaDevices.getUserMedia(basicConstraints);
+                stream = await navigator.mediaDevices.getUserMedia(simpleConstraints);
                 
                 video.srcObject = stream;
                 captureBtn.disabled = false;
-                showStatus('✅ Cámara activada con configuración básica', 'success');
+                showStatus('✅ Cámara activada con configuración simple', 'success');
+                enableButtons();
                 
             } catch (error) {
-                showStatus('❌ Error incluso con configuración básica. Reinicia la app.', 'error');
+                debugLog('Error en reintento simple: ' + error.message);
+                showStatus('❌ No se pudo acceder a la cámara con ninguna configuración', 'error');
+                enableButtons();
             }
         }
         
         function capturePhoto() {
             try {
+                debugLog('Capturando foto...');
+                
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 
+                // Dibujar la imagen (aplicar espejo para que coincida con el video)
+                context.translate(canvas.width, 0);
+                context.scale(-1, 1);
                 context.drawImage(video, 0, 0, canvas.width, canvas.height);
                 
                 const dataUrl = canvas.toDataURL('image/png');
@@ -317,8 +393,10 @@
                 photo.style.display = 'block';
                 
                 showStatus('✅ Foto capturada exitosamente', 'success');
+                debugLog('Foto capturada correctamente');
                 
             } catch (error) {
+                debugLog('Error al capturar foto: ' + error.message);
                 showStatus('❌ Error al capturar foto', 'error');
             }
         }
@@ -334,19 +412,29 @@
             captureBtn.disabled = true;
         }
         
+        // Event Listeners
         startCameraBtn.addEventListener('click', startCamera);
+        retryCameraBtn.addEventListener('click', startCamera);
         captureBtn.addEventListener('click', capturePhoto);
         
-        // Mejor manejo de limpieza
+        // Limpieza
         window.addEventListener('beforeunload', stopCamera);
         window.addEventListener('pagehide', stopCamera);
         
         // Service Worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js')
-                .then(() => console.log('Service Worker registrado'))
-                .catch(err => console.log('Error SW:', err));
+                .then(() => {
+                    debugLog('Service Worker registrado');
+                })
+                .catch(err => {
+                    debugLog('Error SW: ' + err);
+                });
         }
+        
+        // Info inicial
+        debugLog('Aplicación cargada');
+        debugLog('Navegador: ' + navigator.userAgent);
     </script>
 </body>
 </html>
